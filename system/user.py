@@ -679,6 +679,18 @@ class User(object):
         except OSError, e:
             self.module.exit_json(failed=True, msg="%s" % e)
 
+    def check_expires(self):
+
+        expires = None
+        if os.path.exists(self.SHADOWFILE) and os.access(self.SHADOWFILE, os.R_OK):
+            for line in open(self.SHADOWFILE).readlines():
+                if line.startswith('%s:' % self.name):
+                    expires = line.split(':')[7]
+
+        if not expires:
+            expires = 'never'
+
+        return expires
 
 # ===========================================
 
@@ -2168,6 +2180,10 @@ def main():
                 result['ssh_fingerprint'] = err.strip()
             result['ssh_key_file'] = user.get_ssh_key_path()
             result['ssh_public_key'] = user.get_ssh_public_key()
+
+        expires = user.check_expires()
+        if expires:
+            result['expires'] = expires
 
     module.exit_json(**result)
 
