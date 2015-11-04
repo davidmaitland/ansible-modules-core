@@ -188,7 +188,7 @@ options:
         required: false
         default: "None"
         description:
-            - An expiry time for the user in epoch, it will be ignored on platforms that do not support this.
+            - An expiry time for the user in epoch, it will be ignored on platforms that do not support this. Pass "never" to disable an existing expiry time.
               Currently supported on Linux and FreeBSD.
 '''
 
@@ -205,8 +205,11 @@ EXAMPLES = '''
 # Create a 2048-bit SSH key for user jsmith in ~jsmith/.ssh/id_rsa
 - user: name=jsmith generate_ssh_key=yes ssh_key_bits=2048 ssh_key_file=.ssh/id_rsa
 
-# added a consultant whose account you want to expire
+# Added a consultant whose account you want to expire
 - user: name=james18 shell=/bin/zsh groups=developers expires=1422403387
+
+# Remove an account expiration
+- user: name=james18 expires=never
 '''
 
 import os
@@ -279,10 +282,13 @@ class User(object):
             self.home = os.path.expanduser(module.params['home'])
 
         if module.params['expires']:
-            try:
-                self.expires = time.gmtime(module.params['expires'])
-            except Exception,e:
-                module.fail_json("Invalid expires time %s: %s" %(self.expires, str(e)))
+            if module.params['expires'] == 'never':
+                self.expires = module.params['expires']
+            else:
+                try:
+                    self.expires = time.gmtime(float(module.params['expires']))
+                except Exception,e:
+                    module.fail_json("Invalid expires time %s: %s" %(self.expires, str(e)))
 
         if module.params['ssh_key_file'] is not None:
             self.ssh_file = module.params['ssh_key_file']
@@ -350,7 +356,7 @@ class User(object):
             cmd.append('-s')
             cmd.append(self.shell)
 
-        if self.expires:
+        if self.expires and self.expires != 'never':
             cmd.append('--expiredate')
             cmd.append(time.strftime(self.DATE_FORMAT, self.expires))
 
@@ -466,7 +472,10 @@ class User(object):
 
         if self.expires:
             cmd.append('--expiredate')
-            cmd.append(time.strftime(self.DATE_FORMAT, self.expires))
+            if self.expires == 'never':
+                cmd.append("")
+            else:
+                cmd.append(time.strftime(self.DATE_FORMAT, self.expires))
 
         if self.update_password == 'always' and self.password is not None and info[1] != self.password:
             cmd.append('-p')
@@ -750,7 +759,7 @@ class FreeBsdUser(User):
             cmd.append('-L')
             cmd.append(self.login_class)
 
-        if self.expires:
+        if self.expires and self.expires != 'never':
             days =( time.mktime(self.expires) - time.time() ) / 86400
             cmd.append('-e')
             cmd.append(str(int(days)))
@@ -849,9 +858,12 @@ class FreeBsdUser(User):
                 cmd.append(','.join(new_groups))
 
         if self.expires:
-            days = ( time.mktime(self.expires) - time.time() ) / 86400
             cmd.append('-e')
-            cmd.append(str(int(days)))
+            if self.expires == 'never':
+                cmd.append('0')
+            else:
+                days = ( time.mktime(self.expires) - time.time() ) / 86400
+                cmd.append(str(int(days)))
 
         # modify the user if cmd will do anything
         if cmd_len != len(cmd):
@@ -2065,7 +2077,7 @@ def main():
             ssh_key_comment=dict(default=ssh_defaults['comment'], type='str'),
             ssh_key_passphrase=dict(default=None, type='str', no_log=True),
             update_password=dict(default='always',choices=['always','on_create'],type='str'),
-            expires=dict(default=None, type='float'),
+            expires=dict(default=None, type='str'),
         ),
         supports_check_mode=True
     )
