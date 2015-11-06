@@ -687,7 +687,9 @@ class User(object):
                 if line.startswith('%s:' % self.name):
                     expires = line.split(':')[7]
 
-        if not expires:
+        if expires:
+            expires = int(expires) * 86400
+        else:
             expires = 'never'
 
         return expires
